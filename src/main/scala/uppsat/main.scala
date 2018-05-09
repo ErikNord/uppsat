@@ -1,7 +1,6 @@
 package uppsat;
 
 
-
 import uppsat.precision.PrecisionMap
 import uppsat.Timer.TimeoutException
 import uppsat.theory.BooleanTheory._
@@ -24,7 +23,6 @@ import uppsat.ApproximationSolver.Unsat
 import uppsat.ApproximationSolver.Sat
 import uppsat.ApproximationSolver.Answer
 import uppsat.approximation.fpa.smallfloats._
-import uppsat.approximation.smallints.SmallIntsApp
 import uppsat.approximation.fpa.reals._
 import uppsat.approximation.fpa.fixpoint._
 import uppsat.approximation.components._
@@ -54,18 +52,18 @@ object globalOptions {
                          "nlsat" -> new Z3Solver("NLSAT","(check-sat-using qfnra-nlsat)\n")) 
                          
   val REG_APPROXS = Map( "ijcar" ->  new Approximation(IJCARSmallFloatsApp), 
-                          "saturation" ->  new Approximation(FxPntSmallFloatsApp),
-                          "smallints" ->  new Approximation(SmallIntsApp),
-                          "reals" ->  new Approximation(FPARealApp),
-                          "reals-node-by-node" ->  new Approximation(FPARealNodeByNodeApp),
-                          "saturation_reals" -> new Approximation(FxPntFPARealApp),
-                          "fixedpoint" ->  new Approximation(FPABVApp),
-                          "fixedpoint-node-by-node" ->  new Approximation(FPABVNodeByNodeApp),                          
-                          "fixedpoint-no-reconstruct" ->  new Approximation(FPABVEmptyApp),
-                          "ijcar-node-by-node" -> new Approximation(IJCARSmallFloatsNodeByNodeApp),
-                          "ijcar-no-reconstruct" -> new Approximation(IJCARSmallFloatsEmptyapp)
+    "saturation" ->  new Approximation(FxPntSmallFloatsApp),
+    "reals" ->  new Approximation(FPARealApp),
+    "linearreals" ->  new Approximation(FPALinRealApp),
+    "reals-node-by-node" ->  new Approximation(FPARealNodeByNodeApp),
+    "saturation_reals" -> new Approximation(FxPntFPARealApp),
+    "fixedpoint" ->  new Approximation(FPABVApp),
+    "fixedpoint-node-by-node" ->  new Approximation(FPABVNodeByNodeApp),
+    "fixedpoint-no-reconstruct" ->  new Approximation(FPABVEmptyApp),
+    "ijcar-node-by-node" -> new Approximation(IJCARSmallFloatsNodeByNodeApp),
+    "ijcar-no-reconstruct" -> new Approximation(IJCARSmallFloatsEmptyapp)
                           
-                         ) //"empty" -> EmptyApproximation) 
+  ) //"empty" -> EmptyApproximation)
                          
   var approximation = "ijcar"
   var backend = "z3"
