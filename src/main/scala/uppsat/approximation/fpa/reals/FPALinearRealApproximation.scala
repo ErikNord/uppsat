@@ -37,10 +37,11 @@ import uppsat.approximation.reconstruction.EmptyReconstruction
 import uppsat.approximation.reconstruction.PostOrderReconstruction
 
 trait FPALinRealContext extends ApproximationContext {
-   type Precision = Int
-   val precisionOrdering = new IntPrecisionOrdering(0, 1)
-   val inputTheory = FloatingPointTheory
-   val outputTheory = RealTheory
+  type Precision = Int
+  val precisionOrdering = new IntPrecisionOrdering(0, 1)
+  val inputTheory = FloatingPointTheory
+  val outputTheory = RealTheory
+  var oldModel = List() : List[(RealVar,Double)]
 }
 
 trait FPALinRealCodec extends FPALinRealContext with PostOrderCodec {
@@ -76,122 +77,203 @@ trait FPALinRealCodec extends FPALinRealContext with PostOrderCodec {
     result
   }
 
+  def getApproxValue(variable : RealVar, lst : List[(RealVar, Double)]) : Double = {
+    var result = 1.0 : Double
+    for (n <- lst) {
+      if (n._1 == variable){
+        result = n._2
+      }
+    }
+    result
+  }
+
   // Encode FP by precision value:
   // 0 - Replace FP constraints with corresponding Real constraints
   // 1 - Introduce \epsilon > 0  as buffer in constraints to avoid rounding disrupting model reconstruction
   // 3 - No encoding, retain FP constraints
   import BigInt._;
-
-  def encodeNode(symbol : ConcreteFunctionSymbol, label : Label, children : List[AST], precision : Int) : AST = {
-     var nLab = label
+  def mappingFun(symbol : ConcreteFunctionSymbol, label : Label, children : List[AST]) = {
+    val nLab = label
+    val child1 = children(1).label
+    val child2 = children(2).label
     if (degree contains nLab) {throw new Exception("Label in Map")}
     symbol match{
-      // single variable
-      case fpvar : FPVar =>
-        degree = degree + (nLab -> List((1.0, List((fpvar, 1)))))
-      // single literal
-      case fplit: FloatingPointLiteral =>
-        var toDouble = bitsToDouble(fplit)
-        degree = degree + (nLab -> List((toDouble, List((null, 0)))))
+    // single variable
+    case fpvar : FPVar =>
+      degree = degree + (nLab -> List((1.0, List((fpvar, 1)))))
+    // single literal
+    case fplit: FloatingPointLiteral =>
+      var toDouble = bitsToDouble(fplit)
+      degree = degree + (nLab -> List((toDouble, List((null, 0)))))
 
-      // functionSymbols
-      case fpSym : FloatingPointFunctionSymbol =>
-        val factory = fpSym.getFactory match {
-          // multiplicattion
-          case FPMultiplicationFactory =>
-            val childLst1 = degree(children(1).label)
-            val childLst2 = degree(children(2).label)
-            var newLst = List() : List[(Double,List[(FPVar,Int)])]
+    // functionSymbols
+    case fpSym : FloatingPointFunctionSymbol =>
+      val factory = fpSym.getFactory match {
+        // multiplicattion
+        case FPMultiplicationFactory =>
+          val childLst1 = degree(child1)
+          val childLst2 = degree(child2)
+          var newLst = List() : List[(Double,List[(FPVar,Int)])]
 
-            for (n <- childLst1){
-              var lit = n._1
-              var varsN = n._2
-             
-              for (m <- childLst2){
-                lit = m._1 * lit
-                var varsM = m._2
-                var tmpLst = List() : List[(FPVar,Int)]
-                tmpLst = varsN
+          for (n <- childLst1){
+            var lit = n._1
+            var varsN = n._2
+            
+            for (m <- childLst2){
+              lit = m._1 * lit
+              var varsM = m._2
+              var tmpLst = List() : List[(FPVar,Int)]
+              tmpLst = varsN
 
-                for (m1 <- varsM){
-                  var fpVar = m1._1
-                  var existVar = existVarIndex(tmpLst, fpVar)
-                  var exist = existVar._1
-                  var index = existVar._2
+              for (m1 <- varsM){
+                var fpVar = m1._1
+                var existVar = existVarIndex(tmpLst, fpVar)
+                var exist = existVar._1
+                var index = existVar._2
 
-                  if (exist){
-                    var newDegr = m1._2 + (tmpLst(index)._2)
-                    var newTup = (fpVar, newDegr)
-                    tmpLst = tmpLst.updated(index, newTup)
-                  }else{
-                    tmpLst = m1 +: tmpLst
-                  }
+                if (exist){
+                  var newDegr = m1._2 + (tmpLst(index)._2)
+                  var newTup = (fpVar, newDegr)
+                  tmpLst = tmpLst.updated(index, newTup)
+                }else{
+                  tmpLst = m1 +: tmpLst
                 }
-                // fullösning
-                tmpLst = tmpLst.filter(_ != (null,0))
-                newLst = (lit, tmpLst) +: newLst
               }
+              // fullösning
+              tmpLst = tmpLst.filter(_ != (null,0))
+              newLst = (lit, tmpLst) +: newLst
             }
-            degree = degree + (nLab -> newLst)
+          }
+          degree = degree + (nLab -> newLst)
 
-          // division
-          case FPDivisionFactory =>
-            val childLst1 = degree(children(1).label)
-            val childLst2 = degree(children(2).label)
-            var newLst = List() : List[(Double,List[(FPVar,Int)])]
-            println(childLst1)
-            println(childLst2)
+        // division
+        case FPDivisionFactory =>
+          val childLst1 = degree(child1)
+          val childLst2 = degree(child2)
+          var newLst = List() : List[(Double,List[(FPVar,Int)])]
+          println(childLst1)
+          println(childLst2)
 
-            for (n <- childLst1){
-              var lit = n._1
-              var varsN = n._2
-             
-              for (m <- childLst2){
-                lit = m._1 * lit
-                var varsM = m._2
-                var tmpLst = List() : List[(FPVar,Int)]
-                tmpLst = varsN
+          for (n <- childLst1){
+            var lit = n._1
+            var varsN = n._2
+            
+            for (m <- childLst2){
+              lit = m._1 * lit
+              var varsM = m._2
+              var tmpLst = List() : List[(FPVar,Int)]
+              tmpLst = varsN
 
-                for (m1 <- varsM){
-                  var fpVar = m1._1
-                  var existVar = existVarIndex(tmpLst, fpVar)
-                  var exist = existVar._1
-                  var index = existVar._2
+              for (m1 <- varsM){
+                var fpVar = m1._1
+                var existVar = existVarIndex(tmpLst, fpVar)
+                var exist = existVar._1
+                var index = existVar._2
 
-                  if (exist){
-                    var newDegr = (tmpLst(index)._2) - m1._2
-                    var newTup = (fpVar, newDegr)
-                    tmpLst = tmpLst.updated(index, newTup)
-                  }else{
-                    var newDegr = -m1._2
-                    var newTup = (fpVar, newDegr)
-                    tmpLst = newTup +: tmpLst
-                  }
+                if (exist){
+                  var newDegr = (tmpLst(index)._2) - m1._2
+                  var newTup = (fpVar, newDegr)
+                  tmpLst = tmpLst.updated(index, newTup)
+                }else{
+                  var newDegr = -m1._2
+                  var newTup = (fpVar, newDegr)
+                  tmpLst = newTup +: tmpLst
                 }
-                // fullösning
-                tmpLst = tmpLst.filter(_ != (null,0))
-                newLst = (lit, tmpLst) +: newLst
               }
+              // fullösning
+              tmpLst = tmpLst.filter(_ != (null,0))
+              newLst = (lit, tmpLst) +: newLst
             }
-            degree = degree + (nLab -> newLst)
+          }
+          degree = degree + (nLab -> newLst)
 
-          // addition
-          case FPAdditionFactory =>
-            val childLst1 = degree(children(1).label)
-            val childLst2 = degree(children(2).label)
-            var newLst =  childLst1 ++ childLst2
+        // addition
+        case FPAdditionFactory =>
+          val childLst1 = degree(child1)
+          val childLst2 = degree(child2)
+          var newLst =  childLst1 ++ childLst2
+          degree = degree + (nLab -> newLst)
 
-            degree = degree + (nLab -> newLst)
+        // other functionSymbols
+        case _ =>
+          //println("other functionsymbol")
+      }
+    }
+  }
 
-          // other functionSymbols
-          case _ =>
-            //println("other functionsymbol")
+  def encodeNode(symbol : ConcreteFunctionSymbol, label : Label, children : List[AST], precision : Int) : AST = {
+    symbol match{
+      case fpPred : FloatingPointPredicateSymbol =>
+        val childLst1 = degree(children(0).label)
+        val childLst2 = degree(children(1).label)
+        val childs = List(childLst1, childLst2)
+
+        val newSymbol = fpPred.getFactory match {
+          case FPEqualityFactory => RealEquality
+          case FPFPEqualityFactory => RealEquality
+          case FPLessThanFactory => RealLT
+          case FPLessThanOrEqualFactory => RealLEQ
+          case FPGreaterThanFactory => RealGT
+          case FPGreaterThanOrEqualFactory => RealGEQ
+          case _ => throw new Exception(fpPred + " unsupported")
         }
+
+        // common fun - returns the GCD of a childLst
+        var newChildren = List() : List[AST]
+        for(m <- childs){
+          var polLst = List() : List[AST]
+          for (n <- m){
+            var lit = n._1
+            var lst = n._2
+            var len = lst.length
+            var x = 0
+            var const = 1.0 : Double
+            if (len > 1){
+              for(x <- 0 to (len-1)){
+                var elem = lst(x)
+                var variable = new RealVar(elem._1.name)
+                var degree = elem._2
+                if(!oldModel.isEmpty){
+                  const = const * scala.math.pow(getApproxValue(variable, oldModel), degree)
+                }
+              }
+            }
+            var elem = lst.last
+            if(elem._1 == null){
+              var litLeaf = Leaf(RealNumeral((lit.toInt) : BigInt))
+              polLst = litLeaf +: polLst
+            }else{
+              var variable = new RealVar(elem._1.name)
+              var degree = elem._2
+              if(!oldModel.isEmpty){
+                const = const * scala.math.pow(getApproxValue(variable, oldModel), degree)
+              }
+              var litLeaf = Leaf(RealNumeral((const * lit).toInt : BigInt)) //problably not correct way
+              var varLeaf = Leaf(variable)
+              var subTree = realMultiplication(litLeaf, varLeaf)
+              polLst = subTree +: polLst
+              //aprox lats var here
+            }
+          }
+          var ast : AST = AST(null, null, null)
+          if(polLst.length > 1){
+            var lstHead = polLst.head
+            var lstTail = polLst.tail
+            ast = lstTail.foldLeft(lstHead){(acc,i)=>realAddition(acc,i)}
+            newChildren = ast +: newChildren
+          }else{
+            ast = polLst.head
+            newChildren = ast +: newChildren
+          }
+        }
+        // uses floating point literal
+        val newAST : AST = AST(newSymbol, List(), newChildren)
+        newAST
+      // other Symbol
       case _ =>
         //println("other symbol")
     }
-    println(symbol ,(degree get nLab))
-  
+    
     // my mods/\
 
 
@@ -327,7 +409,7 @@ trait FPALinRealCodec extends FPALinRealContext with PostOrderCodec {
       case _ => value
     }
   }
-
+  
   def retrieveFromAppModel(ast : AST, appModel : Model) = {
     if (appModel.contains(ast)) {
       appModel(ast)
