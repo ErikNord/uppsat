@@ -79,7 +79,7 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
   }
 
   def getApproxValue(variable : RealVar, lst : List[(RealVar, Double)]) : Double = {
-    var result = 1.0 : Double
+    var result = 3.0 : Double
     for (n <- lst) {
       if (n._1 == variable){
         result = n._2
@@ -240,29 +240,21 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
           for (n <- m){
             var lit = n._1
             var lst = n._2
-            var len = lst.length
-            var x = 0
             var const = 1.0 : Double
-            if (len > 1){
-              for(x <- 0 to (len-1)){
-                var elem = lst(x)
-                var variable = new RealVar(elem._1.name)
-                var degree = elem._2
-                if(!oldModel.isEmpty){
-                  const = const * scala.math.pow(getApproxValue(variable, oldModel), degree)
-                }
-              }
+            for(elem <- lst.init){
+              var variable = new RealVar(elem._1.name)
+              var degree = elem._2
+              const = const * scala.math.pow(getApproxValue(variable, oldModel), degree)
             }
+            
             var elem = lst.last
             if(elem._1 == null){
               var litLeaf = Leaf(RealNumeral((lit.toInt) : BigInt))
               polLst = litLeaf +: polLst
             }else{
               var variable = new RealVar(elem._1.name)
-              var degree = elem._2
-              if(!oldModel.isEmpty){
-                const = const * scala.math.pow(getApproxValue(variable, oldModel), degree)
-              }
+              var degree = elem._2 
+              const = const * scala.math.pow(getApproxValue(variable, oldModel), degree -1)
               var litLeaf = Leaf(RealNumeral((const * lit).toInt : BigInt)) //problably not correct way
               var varLeaf = Leaf(variable)
               var subTree = realMultiplication(litLeaf, varLeaf)
@@ -281,8 +273,11 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
           }
         }
         // uses floating point literal
-        val newAST : AST = AST(newSymbol, List(), newChildren)
+        val newAST = AST(newSymbol, label, newChildren)
+        println("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
+        newAST.prettyPrint
         newAST
+        println("här kn man va")
       // other Symbol
       case _ =>
         //println("other symbol")
@@ -443,20 +438,23 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
     val pmap = args._2
     
     val appValue = retrieveFromAppModel(ast, appModel)
-    
     val decodedValue = decodeSymbolValue(ast.symbol, appValue, pmap(ast.label))
-  
+
+    //val lst = List() : List[(ConcreteFunctionSymbol, AST)]
+    //val x = ModelEvaluator.evalAST(ast, ast.symbol, lst, inputTheory)
+
+    //println("in degree", degree get ast.label)
+    println("in ast", ast.symbol)
     if (decodedModel.contains(ast)){
       val existingValue = decodedModel(ast).symbol
-      if ( existingValue != decodedValue.symbol) {
+      if (existingValue != decodedValue.symbol) {
         ast.prettyPrint("\t")
         throw new Exception("Decoding the model results in different values for the same entry : \n" + existingValue + " \n" + decodedValue.symbol)
       }
     } else {
       if (ast.isVariable){
-        println(">> "+ ast.symbol + " " + decodedValue.symbol + " /" + appValue.symbol +"/")
-        val lst = List() : List[(ConcreteFunctionSymbol, AST)]
-        //println(ModelEvaluator.evalAST(ast, ast.symbol, lst, inputTheory))
+        println(">> "+ ast.symbol + " " + decodedValue.symbol + " /" + appValue.symbol +"/") 
+       
       }
       decodedModel.set(ast, decodedValue)
     }
