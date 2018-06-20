@@ -77,9 +77,21 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
     }
     result
   }
-
+  def existPolIndex(pol : List[(FPVar,Int)], polLst : List[(Double,List[(FPVar,Int)])]): (Boolean, Int) = {
+    var result = (false, -1)
+    var count = 0
+    var sort = pol
+    for (n <- polLst){
+      if (sort == (n._2)){
+        result = (true, count)
+      }
+      count += 1
+    }
+    result
+  }
+  //
   def getApproxValue(variable : RealVar, lst : List[(RealVar, Double)]) : Double = {
-    var result = 3.0 : Double
+    var result = 3.0 : Double // magic
     for (n <- lst) {
       if (n._1 == variable){
         result = n._2
@@ -101,7 +113,6 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
   def mapNode(degree : Map[uppsat.ast.AST.Label, List[(Double,List[(FPVar,Int)])]],ast : AST) : Map[uppsat.ast.AST.Label, List[(Double,List[(FPVar,Int)])]] = {
     val AST(symbol, label, children) = ast
     val nLab = label
-    
     if (degree contains nLab) {throw new Exception("Label in Map")}
     symbol match{
     // single variable
@@ -121,8 +132,6 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
             c = degree(childLabel) :: c
           }
         }
-        //val child1 = children(1).label
-        //val child2 = children(2).label
         fpSym.getFactory match {
         // multiplicattion
           case FPMultiplicationFactory =>
@@ -167,12 +176,12 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
             val childLst2 = c(1)
             var newLst = List() : List[(Double,List[(FPVar,Int)])]
 
-            for (n <- childLst1){
+            for (n <- childLst2){
               var lit = n._1
               var varsN = n._2
               
-              for (m <- childLst2){
-                lit = m._1 * lit
+              for (m <- childLst1){
+                lit = m._1 * lit // Div?
                 var varsM = m._2
                 var tmpLst = List() : List[(FPVar,Int)]
                 tmpLst = varsN
@@ -198,93 +207,76 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
                 newLst = (lit, tmpLst) +: newLst
               }
             }
+            println(newLst)
             degree + (nLab -> newLst)
 
           // addition
           case FPAdditionFactory =>
             val childLst1 = c(0)
             val childLst2 = c(1)
-            var newLst =  childLst1 ++ childLst2
+            var newLst = childLst1
+
+            for (n <- childLst2){
+              var lit = n._1
+              var vars = n._2
+              var existindex = existPolIndex(vars, newLst)
+              var exist = existindex._1
+              var index = existindex._2
+
+              if(exist){
+                lit += newLst(index)._1
+                var newTup = (lit, vars)
+                newLst = newLst.updated(index, newTup)
+              }else{
+                newLst = n +: newLst
+              }
+            }
             degree + (nLab -> newLst)
-          // other functionSymbols
+
+          // subtraction
+          case FPSubstractionFactory =>
+            // find equal lists and remove them.
+            // - is +(-)
+            val childLst1 = c(0)
+            val childLst2 = c(1)
+            var newLst = List() : List[(Double,List[(FPVar,Int)])]
+            //var negLst = List() : List[(Double,List[(FPVar,Int)])]
+
+            for (m <- childLst1){
+              var litM = m._1
+              var varsM = m._2
+              var newTup = ((-litM), varsM)
+              newLst = newTup +: newLst
+            }
+
+            for (n <- childLst2){
+              var lit = n._1
+              var vars = n._2
+              var existindex = existPolIndex(vars, newLst)
+              var exist = existindex._1
+              var index = existindex._2
+
+              if(exist){
+                lit += newLst(index)._1
+                var newTup = (lit, vars)
+                newLst = newLst.updated(index, newTup)
+              }else{
+                newLst = n +: newLst
+              }
+            }
+            degree + (nLab -> newLst)
+        
           case _ =>
-            degree
-            //println("other functionsymbol")
+            var newLst = List() : List[(Double,List[(FPVar,Int)])]
+            degree + (nLab -> newLst)
         }
       case _ =>
-        degree
+        var newLst = List() : List[(Double,List[(FPVar,Int)])]
+        degree + (nLab -> newLst)
     }
   }
 
   def encodeNode(symbol : ConcreteFunctionSymbol, label : Label, children : List[AST], precision : Int) : AST = {
-    symbol match{
-      case fpPred : FloatingPointPredicateSymbol =>
-        val childLst1 = degree(children(0).label)
-        val childLst2 = degree(children(1).label)
-        val childs = List(childLst1, childLst2)
-
-        val newSymbol = fpPred.getFactory match {
-          case FPEqualityFactory => RealEquality
-          case FPFPEqualityFactory => RealEquality
-          case FPLessThanFactory => RealLT
-          case FPLessThanOrEqualFactory => RealLEQ
-          case FPGreaterThanFactory => RealGT
-          case FPGreaterThanOrEqualFactory => RealGEQ
-          case _ => throw new Exception(fpPred + " unsupported")
-        }
-
-        // common fun - returns the GCD of a childLst
-        var newChildren = List() : List[AST]
-        for(m <- childs){
-          var polLst = List() : List[AST]
-          for (n <- m){
-            var lit = n._1
-            var lst = n._2
-            var const = 1.0 : Double
-            for(elem <- lst.init){
-              var variable = new RealVar(elem._1.name)
-              var degree = elem._2
-              const = const * scala.math.pow(getApproxValue(variable, oldModel), degree)
-            }
-            
-            var elem = lst.last
-            if(elem._1 == null){
-              var litLeaf = Leaf(RealNumeral((lit.toInt) : BigInt))
-              polLst = litLeaf +: polLst
-            }else{
-              var variable = new RealVar(elem._1.name)
-              var degree = elem._2 
-              const = const * scala.math.pow(getApproxValue(variable, oldModel), degree -1)
-              var litLeaf = Leaf(RealNumeral((const * lit).toInt : BigInt)) //problably not correct way
-              var varLeaf = Leaf(variable)
-              var subTree = realMultiplication(litLeaf, varLeaf)
-              polLst = subTree +: polLst
-              //aprox lats var here
-            }
-          }
-          var ast : AST = polLst.head
-          if(polLst.length > 1){
-            var lstHead = polLst.head
-            var lstTail = polLst.tail
-            ast = lstTail.foldLeft(lstHead){(acc,i)=>realAddition(acc,i)}
-            newChildren = ast +: newChildren
-          }else{
-            newChildren = ast +: newChildren
-          }
-        }
-        // uses floating point literal
-        val newAST = AST(newSymbol, label, newChildren)
-        println("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
-        newAST.prettyPrint
-        newAST
-        println("här kn man va")
-      // other Symbol
-      case _ =>
-        //println("other symbol")
-    }
-    
-    // my mods/\
-
 
     val (newSymbol, newLabel, newChildren) : (ConcreteFunctionSymbol, Label, List[AST]) =
       precision match {
@@ -356,6 +348,11 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
               (newSymbol, nLabel, nChildren)
             }
             case fpPred : FloatingPointPredicateSymbol => {
+              println(fpPred)
+              val childLst1 = degree(children(0).label)
+              val childLst2 = degree(children(1).label)
+              val childs = List(childLst1, childLst2)
+
               val newSymbol = fpPred.getFactory match {
                 case FPEqualityFactory => RealEquality
                 case FPFPEqualityFactory => RealEquality
@@ -365,7 +362,51 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
                 case FPGreaterThanOrEqualFactory => RealGEQ
                 case _ => throw new Exception(fpPred + " unsupported")
               }
-              (newSymbol, label, children)
+
+              // common fun - returns the GCD of a childLst
+              var newChildren = List() : List[AST]
+              for(m <- childs){
+                println(childs)
+                var polLst = List() : List[AST]
+                for (n <- m){
+                  var lit = n._1
+                  var lst = n._2
+                  var const = 1.0 : Double
+                  for(elem <- lst.init){
+                    var variable = new RealVar(elem._1.name)
+                    var degree = elem._2
+                    const = const * scala.math.pow(getApproxValue(variable, oldModel), degree)
+                  }
+                  
+                  var elem = lst.last
+                  if(elem._1 == null){
+                    var litLeaf = Leaf(RealNumeral((lit.toInt) : BigInt))
+                    polLst = litLeaf +: polLst
+                  }else{
+                    var variable = new RealVar(elem._1.name)
+                    var degree = elem._2
+                    const = const * scala.math.pow(getApproxValue(variable, oldModel), degree -1)
+                    if (const < 1) const = 1
+                    var litLeaf = Leaf(RealNumeral((const * lit).toInt : BigInt)) //problably not correct way
+                    var varLeaf = Leaf(variable)
+                    var subTree = realMultiplication(litLeaf, varLeaf)
+                    polLst = subTree +: polLst
+                    //aprox lats var here
+                  }
+                }
+                var ast : AST = polLst.head
+                if(polLst.length > 1){
+                  var lstHead = polLst.head
+                  var lstTail = polLst.tail
+                  ast = lstTail.foldLeft(lstHead){(acc,i)=>realAddition(acc,i)}
+                  newChildren = ast +: newChildren
+                }else{
+                  newChildren = ast +: newChildren
+                }
+              }
+              // uses floating point literal
+              val newAST = AST(newSymbol, label, newChildren)
+              (newSymbol, label, newChildren)
             }
             case _ => {
               (symbol, label, children)
@@ -376,11 +417,10 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
           (symbol, label, children)
       }
 
-
     val sortedChildren =
       for (i <- newChildren.indices)
       yield
-          cast(newChildren(i), newSymbol.args(i))
+        cast(newChildren(i), newSymbol.args(i))
 
     AST(newSymbol, newLabel, sortedChildren.toList)
   }
@@ -440,11 +480,6 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
     val appValue = retrieveFromAppModel(ast, appModel)
     val decodedValue = decodeSymbolValue(ast.symbol, appValue, pmap(ast.label))
 
-    //val lst = List() : List[(ConcreteFunctionSymbol, AST)]
-    //val x = ModelEvaluator.evalAST(ast, ast.symbol, lst, inputTheory)
-
-    //println("in degree", degree get ast.label)
-    println("in ast", ast.symbol)
     if (decodedModel.contains(ast)){
       val existingValue = decodedModel(ast).symbol
       if (existingValue != decodedValue.symbol) {
@@ -454,7 +489,6 @@ trait FPALinRealCodec extends FPALinRealContext with PreprocessingPostOrderCodec
     } else {
       if (ast.isVariable){
         println(">> "+ ast.symbol + " " + decodedValue.symbol + " /" + appValue.symbol +"/") 
-       
       }
       decodedModel.set(ast, decodedValue)
     }

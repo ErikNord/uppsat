@@ -16,8 +16,11 @@ trait PreprocessingPostOrderCodec extends Codec {
   
   def encodeFormula(ast : AST, pmap : PrecisionMap[Precision]) : AST = {
     preprocess(ast)
-    encodeSubFormula(ast, pmap)
-    
+    println("mapping done..")
+    val x = encodeSubFormula(ast, pmap)
+    println("encode")
+    x.prettyPrint
+    x
   }
 
   def encodeSubFormula(ast : AST, pmap : PrecisionMap[Precision]) : AST = {
@@ -28,10 +31,10 @@ trait PreprocessingPostOrderCodec extends Codec {
       }
     encodeNode(symbol, ast.label, newChildren, pmap(ast.label))
   }
+
   def decodeModel(ast : AST, appModel : Model, pmap : PrecisionMap[Precision]) : Model = {
     val decodedModel = new Model()
     AST.postVisit(ast, decodedModel, (appModel, pmap), decodeNode)
     decodedModel
   }
 }
-
